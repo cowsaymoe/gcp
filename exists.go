@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -12,19 +11,6 @@ import (
 	"os"
 	"strings"
 )
-
-func check_perms(url string) string {
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// convert body to string
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body)
-	body := buf.String()
-	fmt.Println(body)
-	return body
-}
 
 func main() {
 	//stats
