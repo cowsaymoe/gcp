@@ -10,12 +10,19 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/fatih/color"
 )
 
 func main() {
 	//stats
 	var numBuckets int
 	var numBucketsFound int
+	var numWordlist int
+	// colors
+	red := color.New(color.FgRed)
+	green := color.New(color.FgGreen)
 	// wordlist to check
 	wordlist := []string{}
 	// flags
@@ -43,7 +50,7 @@ func main() {
 			// add to array
 			wordlist = append(wordlist, fileScanner.Text())
 		}
-		numBuckets += 1
+		numWordlist += 1
 	}
 	readFile.Close()
 	// create logs file
@@ -59,7 +66,8 @@ func main() {
 		// compile url for crawling
 		url := permUrl + wordlist[bucket]
 		objectUrl := url + "/o"
-		fmt.Println("Checking ", wordlist[bucket])
+		// timeout to stop rate limit of 25 requests per second
+		time.Sleep(time.Millisecond * 250)
 		// ignore tls errors
 		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		resp, err := http.Get(url)
@@ -68,15 +76,17 @@ func main() {
 		}
 
 		if resp.StatusCode == 200 {
-			fmt.Println("Bucket found and has read access")
+			green.Println(wordlist[bucket], "bucket found and has read access")
 			bodyBytes, err := io.ReadAll(resp.Body)
 			if err != nil {
 				log.Fatal(err)
 			}
 			bodyString := string(bodyBytes)
-			fmt.Println(bodyString)
+			green.Println(bodyString)
 			// log results
 			logs.WriteString(bodyString)
+			// timeout to stop rate limit of 25 requests per second
+			time.Sleep(time.Millisecond * 250)
 			//get content listing
 			contentResp, err := http.Get(objectUrl)
 			if err != nil {
@@ -90,41 +100,19 @@ func main() {
 			// log results
 			logs.WriteString(contentString)
 			numBucketsFound += 1
+			numBuckets += 1
 
-		} else if resp.StatusCode == 404 {
-			fmt.Println("Not a real bucket")
+		} else if resp.StatusCode == 404 || resp.StatusCode == 400 {
+			continue
 		} else if resp.StatusCode == 401 {
-			fmt.Println("Bucket found but no read access")
+			fmt.Println(wordlist[bucket], "bucket found but no read access")
+			numBuckets += 1
+		} else {
+			red.Println("An error occured while getting bucket", wordlist[bucket])
+			red.Println("Status Code:", resp.StatusCode)
 		}
 
 	}
-	fmt.Println("Found", numBucketsFound, "buckets with read access out of", numBuckets, "buckets.")
-	/**
-	for bucket := range wordlist {
-		// compile url for crawling
-		url := "https://" + wordlist[bucket] + contentUrl
-		fmt.Println("Checking ", wordlist[bucket])
-		// ignore tls errors
-		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		resp, err := http.Get(url)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if resp.StatusCode == 200 {
-			fmt.Println("Bucket found and has read access")
-			// log results
-			logs.WriteString(wordlist[bucket] + " - " + "Bucket found and has read access" + "\n")
-		} else if resp.StatusCode == 404 {
-			fmt.Println("Not a real bucket")
-			// log results
-			logs.WriteString(wordlist[bucket] + " - " + "Not a real bucket" + "\n")
-		} else if resp.StatusCode == 403 {
-			fmt.Println("Bucket found but no read access")
-			// log results
-			logs.WriteString(wordlist[bucket] + " - " + "Bucket found but no read access" + "\n")
-		}
-
-	} **/
+	fmt.Println("Tried", numWordlist, "bucket names. Found", numBucketsFound, "buckets with read access out of", numBuckets, "buckets.")
 	logs.Close()
 }
