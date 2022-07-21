@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -14,6 +16,59 @@ import (
 
 	"github.com/fatih/color"
 )
+
+// custom dns resolver with cache
+var googleAPIsIP net.IP
+var googleStorageDomain string
+
+func init() {
+	googleStorageDomain = "storage.googleapis.com"
+	ips, err := net.LookupIP(googleStorageDomain)
+	if err != nil {
+		log.Fatalf("issue getting ip of storage %v", err)
+	}
+	for _, record := range ips {
+		// make sure ip is ipv4
+		if record.To4() != nil {
+			googleAPIsIP = record
+			break
+		}
+	}
+
+	if googleAPIsIP == nil {
+		log.Fatalf("issue getting ip")
+	}
+
+	log.Println("got ip", googleAPIsIP)
+
+	// googleAPIsIP = ips[0]
+
+	var (
+		dnsResolverIP        = "8.8.8.8:53" // Google DNS resolver.
+		dnsResolverProto     = "udp"        // Protocol to use for the DNS resolver
+		dnsResolverTimeoutMs = 5000         // Timeout (ms) for the DNS resolver (optional)
+	)
+
+	dialer := &net.Dialer{
+		Resolver: &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := net.Dialer{
+					Timeout: time.Duration(dnsResolverTimeoutMs) * time.Millisecond,
+				}
+				return d.DialContext(ctx, dnsResolverProto, dnsResolverIP)
+			},
+		},
+	}
+
+	dialContext := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if addr == googleStorageDomain+":443" {
+			return net.Dial("tcp", googleAPIsIP.String()+":443")
+		}
+		return dialer.DialContext(ctx, network, addr)
+	}
+	http.DefaultTransport.(*http.Transport).DialContext = dialContext
+}
 
 func main() {
 	//stats
@@ -70,6 +125,7 @@ func main() {
 		time.Sleep(time.Millisecond * 250)
 		// ignore tls errors
 		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		http.DefaultClient.Timeout = time.Minute
 		resp, err := http.Get(url)
 		if err != nil {
 			log.Fatal(err)
