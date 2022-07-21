@@ -26,7 +26,7 @@ jobs:
         pre_command: "go get -u -v -f all"
         goos: ${{ matrix.goos }}
         goarch: ${{ matrix.goarch }}
-        goversion: "latest"
+        goversion: "https://go.dev/dl/go1.18.4.linux-amd64.tar.gz"
         project_path: "./cmd/test-binary"
         binary_name: "test-binary"
         extra_files: README.md
